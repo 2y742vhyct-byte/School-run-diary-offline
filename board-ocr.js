@@ -60,17 +60,41 @@ function parseContacts(text){
  return [{name:names,phone:matches[0]||''}];
 }
 const cleanName=s=>clean(s).replace(/\((?:w\/?c|wc)\s*user\)/gi,'').replace(/[^\p{L}'\-\s]/gu,'').replace(/\s+/g,' ').trim();
-function crop(img,range,y,pitch,contrast=1.6){
- const x0=Math.max(0,Math.floor(range[0])),x1=Math.min(img.width,Math.ceil(range[1]));
- const half=Math.max(8,Math.min(18,pitch*.49)),y0=Math.max(0,Math.round(y-half)),y1=Math.min(img.height,Math.round(y+half));
+// Crop inside the printed borders and add a white margin, so table lines
+// aren't mistaken for a child's first or last letters.
+function crop(img,range,y,pitch,contrast=1.6,asName=false){
+ const inset=asName?Math.max(2,Math.min(4,img.width*.004)):0;
+ const x0=Math.max(0,Math.floor(range[0]+inset));
+ const x1=Math.min(img.width,Math.ceil(range[1]-(asName?Math.max(3,img.width*.006):0)));
+ const half=Math.max(8,Math.min(18,pitch*(asName?.46:.49)));
+ const y0=Math.max(0,Math.round(y-half));
+ const y1=Math.min(img.height,Math.round(y+half));
  const c=document.createElement('canvas'),w=Math.max(1,x1-x0),h=Math.max(1,y1-y0);
- c.width=w*3;c.height=h*3;
- const ctx=c.getContext('2d');
- if(!ctx)throw Error('Photo processing is unavailable');
+ const scale=asName?5:3,margin=asName?12:0;
+ c.width=w*scale+margin*2;c.height=h*scale+margin*2;
+ const ctx=c.getContext('2d');if(!ctx)throw Error('Photo processing is unavailable');
  ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
+ ctx.imageSmoothingEnabled=true;
  ctx.filter='grayscale(1) contrast('+contrast+')';
- ctx.drawImage(img,x0,y0,w,h,0,0,c.width,c.height);
+ ctx.drawImage(img,x0,y0,w,h,margin,margin,w*scale,h*scale);
  return c;
+}
+function evaluateName(result){
+ const data=result?.data||{};
+ const raw=clean(data.text||'');
+ let value=cleanName(raw).replace(/([\p{Ll}])([\p{Lu}])/gu,'$1 $2')
+  .replace(/^[^\p{L}]+|[^\p{L}]+$/gu,'').replace(/\s+/g,' ').trim();
+ const words=value.split(/\s+/).filter(Boolean);
+ const confidences=(data.words||[]).filter(w=>/[\p{L}]/u.test(String(w.text||'')))
+  .map(w=>Number(w.confidence)).filter(Number.isFinite);
+ const confidence=confidences.length?
+  confidences.reduce((a,b)=>a+b,0)/confidences.length:(Number(data.confidence)||0);
+ const plausible=words.length>=2&&words.length<=4&&value.length>=5&&value.length<=60
+  &&words.every(w=>w.length<=22);
+ // Garbled multi-word strings are not valid names. Do not invent a replacement.
+ if(!plausible||raw.length>90)value='';
+ const score=value?confidence+(words.length===2?15:words.length===3?0:-20):-100;
+ return {value,score,confidence,uncertain:!value||confidence<68||words.length!==2};
 }
 let loading;
 async function engine(update){
@@ -104,21 +128,33 @@ async function readPhoto(photo,expected,update=()=>{}){
   if(geom.centres.some(y=>!Number.isFinite(y)||y<0||y>img.height))throw Error('Could not locate pupil rows. Use a clearer close-up photo.');
   await worker.setParameters({tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'});
   const rows=[];
+  await worker.setParameters({tessedit_pageseg_mode:'7',preserve_interword_spaces:'1'});
   for(let i=0;i<expected;i++){
    const values={};
-   for(const [field,range] of Object.entries(geom.columns)){
-    update('Reading pupil '+(i+1)+' of '+expected+' — '+({names:'name',addresses:'address',contacts:'guardian number'}[field]));
-    const res=await worker.recognize(crop(img,range,geom.centres[i],geom.pitch));
+   for(const field of ['addresses','contacts']){
+    update('Reading pupil '+(i+1)+' of '+expected+' — '+(field==='addresses'?'address':'guardian contacts'));
+    const res=await worker.recognize(crop(img,geom.columns[field],geom.centres[i],geom.pitch));
     values[field]=clean(res.data.text);
    }
-   let name=cleanName(values.names);
-   if(name.split(/\s+/).filter(Boolean).length<2){
+   update('Checking name for pupil '+(i+1)+' of '+expected+'…');
+   const printedName=crop(img,geom.columns.names,geom.centres[i],geom.pitch,1.5,true);
+   const firstResult=await worker.recognize(printedName);
+   const primary=evaluateName(firstResult);
+   let best=primary;
+   if(primary.score<84||primary.uncertain){
     update('Rechecking name for pupil '+(i+1)+'…');
-    const again=await worker.recognize(crop(img,[img.width*.337,img.width*.558],geom.centres[i],geom.pitch,1.1));
-    const found=cleanName(again.data.text);
-    if(found.split(/\s+/).filter(Boolean).length>=2)name=found;
+    const second=crop(img,geom.columns.names,geom.centres[i]-1,geom.pitch,1.15,true);
+    const candidate=evaluateName(await worker.recognize(second));
+    if(candidate.score>best.score)best=candidate;
    }
-   rows.push({name,address:values.addresses,stop:values.addresses,contacts:parseContacts(values.contacts),notes:/w\/?c\s*user/i.test(values.names)?'Wheelchair user (verify board)':''});
+   rows.push({
+    name:best.value,
+    nameNeedsReview:best.uncertain||best.score<75,
+    nameCrop:printedName.toDataURL('image/jpeg',.82),
+    address:values.addresses,stop:values.addresses,
+    contacts:parseContacts(values.contacts),
+    notes:/w\/?c\s*user/i.test(String(firstResult.data.text||''))?'Wheelchair user (verify board)':''
+   });
   }
   return {rows,count:expected,detectedCount:count,anchorCount:geom.anchorCount};
  }finally{if(worker)await worker.terminate();}
