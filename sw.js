@@ -1,5 +1,28 @@
-const CACHE='school-run-diary-offline-v3';
-const ASSETS=['./','./index.html','./styles.css','./app.js','./board-ocr.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
-self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()));});
-self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('school-run-diary-offline-')&&k!==CACHE).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
-self.addEventListener('fetch',e=>{if(e.request.method!=='GET'||new URL(e.request.url).origin!==location.origin)return; e.respondWith(caches.match(e.request).then(cached=>cached||fetch(e.request).then(response=>{if(response.ok){const copy=response.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));}return response;}).catch(()=>e.request.mode==='navigate'?caches.match('./index.html'):Response.error())));});
+/* School Run Diary: online updates, offline fallback. No private diary content is cached here. */
+const CACHE='school-run-diary-offline-v4';
+const ASSETS=['./','./index.html','./index.html?v=4','./styles.css','./styles.css?v=4','./app.js','./app.js?v=4','./board-ocr.js','./board-ocr.js?v=4','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
+self.addEventListener('install',event=>{
+ event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));
+});
+self.addEventListener('activate',event=>{
+ event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key.startsWith('school-run-diary-offline-')&&key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim()));
+});
+self.addEventListener('fetch',event=>{
+ const request=event.request;
+ const url=new URL(request.url);
+ if(request.method!=='GET'||url.origin!==self.location.origin)return;
+ event.respondWith((async()=>{
+  const cache=await caches.open(CACHE);
+  try{
+   // Prefer fresh code and pages when online; save successful responses for offline use.
+   const response=await fetch(request);
+   if(response.ok&&response.type!=='opaque')await cache.put(request,response.clone());
+   return response;
+  }catch(error){
+   const saved=await caches.match(request,{ignoreSearch:true});
+   if(saved)return saved;
+   if(request.mode==='navigate')return caches.match('./index.html');
+   return Response.error();
+  }
+ })());
+});
