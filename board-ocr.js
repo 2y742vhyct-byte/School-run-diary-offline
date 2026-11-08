@@ -53,7 +53,7 @@ function parseContacts(text){
  let s=clean(text);
  const pat=/\b0(?:[\s-]?\d){8,9}(?!\d)/g;
  const matches=[...s.matchAll(pat)].map(m=>m[0].replace(/\D/g,''));
- const names=clean(s.replace(pat,'').replace(/\s*[,;/]\s*$/,''));
+ const names=clean(s.replace(pat,'').replace(/\s*[,;/]\s*$/,'')).replace(/^[^\p{L}]+/u,'').replace(/[^\p{L}]+$/u,'');
  const parts=names.split(/\s*[,/&]\s*/).filter(Boolean);
  if(matches.length===2&&parts.length===2)return matches.map((phone,i)=>({name:parts[i],phone}));
  if(matches.length>1)return matches.map((phone,i)=>({name:i===0?names:'',phone}));
