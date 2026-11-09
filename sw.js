@@ -1,6 +1,6 @@
 /* School Run Diary: online updates, offline fallback. No private diary content is cached here. */
-const CACHE='school-run-diary-offline-v5';
-const ASSETS=['./','./index.html','./index.html?v=5','./styles.css','./styles.css?v=5','./app.js','./app.js?v=5','./board-ocr.js','./board-ocr.js?v=5','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
+const CACHE='school-run-diary-offline-v6';
+const ASSETS=['./','./index.html','./index.html?v=6','./styles.css','./styles.css?v=6','./app.js','./app.js?v=6','./board-ocr.js','./board-ocr.js?v=6','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install',event=>{
  event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting()));
 });
