@@ -165,3 +165,20 @@ input.control:focus,select.control:focus,textarea.control:focus{
  .work-grid .work-tile:last-child{grid-column:auto}
 }
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.btn,.work-tile{transition:none}}
+
+
+/* New navigation labels and iPhone sheet refinements */
+.bottom-nav button small{font-size:11px;font-weight:760;line-height:1.15;letter-spacing:-.1px}
+.bottom-nav button:active{background:#eaf1ff}
+.hero-actions .btn{font-size:14px}
+.day-card .section-head{display:flex;justify-content:space-between;gap:10px}
+.day-card .section-head .btn{white-space:nowrap}
+.modal-head .close-button{flex:0 0 auto}
+.board-row .fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media(max-width:700px){
+ .board-row .fields{grid-template-columns:1fr}
+ .bottom-nav button small{font-size:10px}
+ .bottom-nav button svg{width:22px;height:22px}
+ .day-card .section-head h2{font-size:17px}
+ .day-card .section-head .btn{padding:9px 10px}
+}
