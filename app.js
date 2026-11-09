@@ -186,7 +186,8 @@ async function importPupilFile(file){
    seen.add(keyName);
    const address=String(entry.address||'').trim();
    const stop=String(entry.stop||address).trim();
-   if(address.length>400||stop.length>400)throw Error('One of the addresses is too long.');
+   const notes=String(entry.notes||'').trim();
+   if(address.length>400||stop.length>400||notes.length>500)throw Error('An address or note is too long.');
    const providedContacts=Array.isArray(entry.contacts)?entry.contacts:[];
    if(providedContacts.length>4)throw Error('A pupil has too many contacts.');
    const contacts=providedContacts.map(c=>({
@@ -194,19 +195,21 @@ async function importPupilFile(file){
     phone:String(c?.phone||'').replace(/[^0-9+\s()-]/g,'').trim()
    })).filter(c=>c.name||c.phone);
    if(contacts.some(c=>c.name.length>150||c.phone.length>25))throw Error('A contact entry is too long.');
-   list.push({name,address,stop,contacts});
+   list.push({name,address,stop,contacts,notes});
   }
   const existing=list.filter(p=>data.pupils.some(old=>old.routeId===destination.id&&normal(old.name)===normal(p.name))).length;
-  if(!confirm('Import '+list.length+' pupils into '+destination.name+'? '+existing+' matching names will be updated without changing their record IDs. Review addresses and guardian numbers against your board before using them.'))return;
+  if(!confirm('Import '+list.length+' pupils into '+destination.name+'? '+existing+' existing pupils will be kept, with missing fields filled. Their record IDs and any newer details will be preserved. Review addresses and guardian numbers against your original board before using them.'))return;
   await editState(d=>{
    for(const item of list){
     const i=d.pupils.findIndex(p=>p.routeId===destination.id&&normal(p.name)===normal(item.name));
     if(i>=0){
      const old=d.pupils[i];
-     d.pupils[i]={...old,name:item.name,address:item.address||old.address,
-      stop:item.stop||old.stop,contacts:item.contacts.length?item.contacts:old.contacts};
+     d.pupils[i]={...old,address:old.address||item.address,
+      stop:old.stop||item.stop,
+      contacts:old.contacts?.some(c=>c.phone||c.name)?old.contacts:item.contacts,
+      notes:old.notes||item.notes};
     }else{
-     d.pupils.push({id:id(),routeId:destination.id,...item,notes:''});
+     d.pupils.push({id:id(),routeId:destination.id,...item});
     }
    }
   });
